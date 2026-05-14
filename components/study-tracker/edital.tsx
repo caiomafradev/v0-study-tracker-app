@@ -102,7 +102,7 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
   // Calcular progresso baseado no estado local (não mais no MOCK estático)
   const totalTopicos = disciplinasLocais.reduce((acc, d) => acc + d.topicos.length, 0)
   const topicosConcluidos = disciplinasLocais.reduce(
-    (acc, d) => acc + d.topicos.filter(t: any => t.concluido).length, 0
+    (acc, d) => acc + d.topicos.filter((t: any) => t.concluido).length, 0
   )
   const progressoGeral = totalTopicos > 0 ? Math.round((topicosConcluidos / totalTopicos) * 100) : 0
 
