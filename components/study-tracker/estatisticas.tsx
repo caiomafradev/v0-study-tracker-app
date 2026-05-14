@@ -154,20 +154,40 @@ export function Estatisticas({ planoAtivo = 'bb', onOpenTimer }: EstatisticasPro
         </div>
 
         {/* 3. UI DO FILTRO DE DATA PERSONALIZADO */}
+        {/* 3. UI DO FILTRO DE DATA PERSONALIZADO COM BOTÃO */}
         <div className="flex items-center gap-2 bg-muted p-1 rounded-lg border border-transparent focus-within:border-primary/50 transition-colors">
           <input 
             type="date" 
             className="text-sm bg-transparent border-none p-1.5 outline-none cursor-pointer"
             value={dataInicio}
-            onChange={(e) => { setDataInicio(e.target.value); setFiltroPeriodo('personalizado'); }}
+            onChange={(e) => setDataInicio(e.target.value)}
           />
           <span className="text-muted-foreground text-sm font-medium">até</span>
           <input 
             type="date" 
             className="text-sm bg-transparent border-none p-1.5 outline-none cursor-pointer"
             value={dataFim}
-            onChange={(e) => { setDataFim(e.target.value); setFiltroPeriodo('personalizado'); }}
+            onChange={(e) => setDataFim(e.target.value)}
           />
+          <Button 
+            size="sm" 
+            variant={filtroPeriodo === 'personalizado' ? "default" : "secondary"}
+            className="h-8 px-3 text-xs"
+            onClick={() => {
+              if (!dataInicio || !dataFim) {
+                alert("Por favor, selecione a data de início e de fim.");
+                return;
+              }
+              // Só ativa o filtro quando o botão é clicado
+              setFiltroPeriodo('personalizado');
+              
+              // ⚠️ DICA PARA O V0: Aqui é onde a função de filtrar os dados 
+              // do MOCK_DATA com base nessas datas será chamada no futuro
+              console.log(`Filtrando dados entre ${dataInicio} e ${dataFim}`);
+            }}
+          >
+            Filtrar
+          </Button>
         </div>
       </div>
 

@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { 
-  X, 
-  Play, 
-  Pause, 
-  Square, 
+import {
+  X,
+  Play,
+  Pause,
+  Square,
   Timer,
   Clock,
   BookOpen,
@@ -43,23 +43,23 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
   const [disciplinaSelecionada, setDisciplinaSelecionada] = useState(preenchimento?.disciplina || '')
   const [topicoSelecionado, setTopicoSelecionado] = useState(preenchimento?.topico || '')
   const [tipoEstudo, setTipoEstudo] = useState<TipoEstudo>('teoria')
-  
+
   // Estados do timer
   const [estadoTimer, setEstadoTimer] = useState<EstadoTimer>('idle')
   const [tempoEstudoMs, setTempoEstudoMs] = useState(0)
   const [tempoPausaMs, setTempoPausaMs] = useState(0)
   const [timerMinutos, setTimerMinutos] = useState(25)
   const [abaTimer, setAbaTimer] = useState<'cronometro' | 'regressivo'>('cronometro')
-  
+
   // Estados de som
   const [somAtivo, setSomAtivo] = useState<SomAmbiente>('silencio')
   const [volume, setVolume] = useState(40)
-  
+
   // Estados pós-sessão
   const [acertos, setAcertos] = useState(0)
   const [erros, setErros] = useState(0)
   const [revisoesSelecionadas, setRevisoesSelecionadas] = useState<number[]>([])
-  
+
   // Refs
   const intervalEstudo = useRef<NodeJS.Timeout | null>(null)
   const intervalPausa = useRef<NodeJS.Timeout | null>(null)
@@ -130,7 +130,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
     if (!audioCtx.current) {
       audioCtx.current = new AudioContext()
     }
-    
+
     const ctx = audioCtx.current
     gainNode.current = ctx.createGain()
     gainNode.current.gain.value = volume / 100
@@ -168,7 +168,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
     sourceNode.current = ctx.createBufferSource()
     sourceNode.current.buffer = buffer
     sourceNode.current.loop = true
-    
+
     if (somAtivo === 'chuva') {
       const filter = ctx.createBiquadFilter()
       filter.type = 'lowpass'
@@ -179,7 +179,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
     } else {
       sourceNode.current.connect(gainNode.current)
     }
-    
+
     sourceNode.current.start()
   }, [somAtivo, volume])
 
@@ -208,7 +208,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
   }, [somAtivo, estadoTimer, iniciarSom])
 
   // Calcular aproveitamento
-  const aproveitamento = acertos + erros > 0 
+  const aproveitamento = acertos + erros > 0
     ? ((acertos / (acertos + erros)) * 100).toFixed(1)
     : '0.0'
 
@@ -322,8 +322,8 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
                         onClick={() => setTopicoSelecionado(topico.id)}
                         className={cn(
                           "w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all",
-                          topicoSelecionado === topico.id 
-                            ? "bg-success-light border border-primary" 
+                          topicoSelecionado === topico.id
+                            ? "bg-success-light border border-primary"
                             : "hover:bg-muted"
                         )}
                       >
@@ -441,8 +441,8 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
                     onClick={() => setSomAtivo(som.id)}
                     className={cn(
                       "px-3 py-1.5 rounded-full text-sm transition-all",
-                      somAtivo === som.id 
-                        ? "bg-primary text-primary-foreground" 
+                      somAtivo === som.id
+                        ? "bg-primary text-primary-foreground"
                         : "bg-muted hover:bg-muted/80"
                     )}
                   >
@@ -471,8 +471,8 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
           {estadoTimer !== 'finished' && (
             <div className="flex gap-3">
               {estadoTimer === 'idle' && (
-                <Button 
-                  onClick={iniciar} 
+                <Button
+                  onClick={iniciar}
                   className="flex-1 h-12 text-lg bg-primary hover:bg-primary/90"
                   disabled={!disciplinaSelecionada || !topicoSelecionado}
                 >
@@ -480,7 +480,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
                   Iniciar
                 </Button>
               )}
-              
+
               {estadoTimer === 'running' && (
                 <>
                   <Button onClick={pausar} className="flex-1 h-12 bg-amber-500 hover:bg-amber-600">
@@ -493,7 +493,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
                   </Button>
                 </>
               )}
-              
+
               {estadoTimer === 'paused' && (
                 <>
                   <Button onClick={retomar} className="flex-1 h-12 bg-primary hover:bg-primary/90">
@@ -513,7 +513,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
           {estadoTimer === 'finished' && (
             <div className="space-y-6">
               <h3 className="font-heading font-bold text-lg">Sessão Finalizada!</h3>
-              
+
               {/* Resumo */}
               <div className="grid grid-cols-2 gap-3">
                 <Card className="bg-muted">
@@ -575,8 +575,8 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
                     <button
                       key={dias}
                       onClick={() => {
-                        setRevisoesSelecionadas(prev => 
-                          prev.includes(dias) 
+                        setRevisoesSelecionadas(prev =>
+                          prev.includes(dias)
                             ? prev.filter(d => d !== dias)
                             : [...prev, dias]
                         )
@@ -606,7 +606,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
                   Salvar Sessão
                 </Button>
               </div>
-              
+
               <Button variant="outline" className="w-full gap-2">
                 <Calendar className="w-4 h-4" />
                 Adicionar ao Google Agenda
