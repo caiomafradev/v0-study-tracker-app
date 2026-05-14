@@ -307,4 +307,56 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
                       
                       return (
                         <div key={topico.id} className={cn("px-6 py-3 flex items-center gap-4 transition-colors", topico.concluido && "bg-success-light/50")}>
-                          <button onClick={(e) => toggleTopico(disciplina.id, topico.id, e)} className={cn("w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-all", topico.concluido ? "bg-success border-success" : "border-muted-foreground hover:border-primary")
+                          <button onClick={(e) => toggleTopico(disciplina.id, topico.id, e)} className={cn("w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-all", topico.concluido ? "bg-success border-success" : "border-muted-foreground hover:border-primary")}>
+                            {topico.concluido && <Check className="w-4 h-4 text-white" />}
+                          </button>
+                          <span className={cn("flex-1 font-body text-sm md:text-base", topico.concluido && "line-through text-muted-foreground")}>{topico.nome}</span>
+                          <div className="flex items-center gap-4 text-sm flex-shrink-0">
+                            <span className="text-success font-medium hidden sm:inline-block">✅ {topico.acertos || 0}</span>
+                            <span className="text-error font-medium hidden sm:inline-block">❌ {topico.erros || 0}</span>
+                            <span className="font-mono w-14 text-right">{aproveitamento}%</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {/* NOVO: Adição de Tópico Manual In-line */}
+                    <div className="px-6 py-3 bg-muted/10 flex items-center gap-2">
+                      {addTopicoEm === disciplina.id ? (
+                        <div className="flex w-full gap-2 items-center">
+                          <Input 
+                            autoFocus
+                            placeholder="Nome do novo tópico..." 
+                            className="h-8 flex-1"
+                            value={nomeNovoTopico}
+                            onChange={(e) => setNomeNovoTopico(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && salvarNovoTopico(disciplina.id)}
+                          />
+                          <Button size="sm" onClick={() => salvarNovoTopico(disciplina.id)}>Salvar</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setAddTopicoEm(null)}>Cancelar</Button>
+                        </div>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="text-muted-foreground w-full justify-start gap-2" onClick={() => setAddTopicoEm(disciplina.id)}>
+                          <Plus className="w-4 h-4" /> Adicionar Tópico Manualmente
+                        </Button>
+                      )}
+                    </div>
+
+                  </div>
+
+                  {/* Rodapé da Disciplina */}
+                  <div className="px-6 py-4 bg-muted/30 flex items-center justify-between">
+                    <span className="hidden sm:inline-block text-sm text-muted-foreground">Tempo total: <strong className="text-foreground">{formatarTempoLegivel(tempoTotal)}</strong></span>
+                    <Button onClick={() => onOpenTimer?.({ plano: planoAtivo, disciplina: disciplina.id })} className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
+                      <BookOpen className="w-4 h-4" /> Estudar Disciplina
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
