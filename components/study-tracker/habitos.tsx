@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Flame, Trophy, Plus, Check } from 'lucide-react'
+import { Flame, Trophy, Plus, Check, Edit2 } from 'lucide-react' // Adicionado Edit2
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -19,7 +19,6 @@ interface HabitoMarcado {
 }
 
 export function Habitos() {
-  // 1. ESTADOS EXISTENTES
   const [habitos, setHabitos] = useState<HabitoMarcado[]>(
     HABITOS_MOCK.map((h, i) => ({ id: h.id, marcado: i < 2, pontuacaoAnimada: false }))
   )
@@ -27,13 +26,16 @@ export function Habitos() {
   const [conquistaVisivel, setConquistaVisivel] = useState(false)
   const [conquistaAtual, setConquistaAtual] = useState<typeof DESAFIOS_MOCK[0] | null>(null)
 
-  // 2. NOVOS ESTADOS PARA O FORMULÁRIO (Essencial para salvar)
+  // ESTADOS DO MODAL DE DESAFIOS
   const [modalDesafioAberto, setModalDesafioAberto] = useState(false)
-  const [novoDesafio, setNovoDesafio] = useState({
-    nome: '', meta: '', recompensa: '', prazo: ''
-  })
+  const [novoDesafio, setNovoDesafio] = useState({ nome: '', meta: '', recompensa: '', prazo: '' })
 
-  // Cálculos de pontos
+  // NOVO: ESTADO DO STREAK EDITÁVEL
+  const [streakDias, setStreakDias] = useState(12)
+  const [editandoStreak, setEditandoStreak] = useState(false)
+
+  // 1. LÓGICA DE PONTOS DINÂMICOS
+  // Calcula os pontos ganhos APENAS HOJE
   const pontosHoje = habitos
     .filter(h => h.marcado)
     .reduce((acc, h) => {
@@ -41,10 +43,12 @@ export function Habitos() {
       return acc + (habito?.pontos || 0)
     }, 0)
 
-  const pontosSemana = 6200 // Mock
+  // Pontos Globais = (Um valor histórico que vem do banco) + Pontos ganhos hoje
+  const pontosBaseHistorico = 4800 // Exemplo: pontos que você já tinha ontem
+  const pontosTotaisGlobais = pontosBaseHistorico + pontosHoje 
   const metaSemana = 8000
 
-  // Funções existentes
+  // 2. FUNÇÃO DE MARCAR HÁBITO (Inalterada, mas agora reflete globalmente)
   const marcarHabito = (id: string) => {
     setHabitos(prev => prev.map(h => {
       if (h.id === id) {
@@ -54,7 +58,7 @@ export function Habitos() {
           }, 1000)
           return { ...h, marcado: true, pontuacaoAnimada: true }
         }
-        return { ...h, marcado: false }
+        return { ...h, marcado: false } // Desmarcar retira os pontos automaticamente
       }
       return h
     }))
@@ -65,80 +69,76 @@ export function Habitos() {
     setConquistaVisivel(true)
   }
 
-  // 3. FUNÇÃO QUE SALVA O DESAFIO
   const salvarDesafio = () => {
-    if (!novoDesafio.nome || !novoDesafio.meta) return // Impede salvar vazio
+    if (!novoDesafio.nome || !novoDesafio.meta) return
 
     const desafioCriado = {
       id: `desafio-${Date.now()}`,
       nome: novoDesafio.nome,
       meta: Number(novoDesafio.meta),
-      atual: 0,
+      atual: 0, // Será ignorado, pois usaremos os pontos globais
       recompensa: novoDesafio.recompensa || 'Surpresa',
       prazo: novoDesafio.prazo || new Date().toISOString(),
       concluido: false
     }
 
-    setDesafios(prev => [...prev, desafioCriado]) // Adiciona à lista
-    setNovoDesafio({ nome: '', meta: '', recompensa: '', prazo: '' }) // Limpa formulário
-    setModalDesafioAberto(false) // Fecha modal
+    setDesafios(prev => [...prev, desafioCriado])
+    setNovoDesafio({ nome: '', meta: '', recompensa: '', prazo: '' })
+    setModalDesafioAberto(false)
   }
-
-  const gerarCalendario = () => {
-    const semanas = 5; const dias = 7; const calendario = []
-    for (let s = 0; s < semanas; s++) {
-      const semana = []
-      for (let d = 0; d < dias; d++) {
-        const pontos = Math.floor(Math.random() * 1500)
-        let cor = '#E2E8F0'
-        if (pontos > 0 && pontos <= 500) cor = '#86EFAC'
-        if (pontos > 500 && pontos <= 1000) cor = '#22C55E'
-        if (pontos > 1000) cor = '#15803D'
-        semana.push({ pontos, cor })
-      }
-      calendario.push(semana)
-    }
-    return calendario
-  }
-
-  const calendario = gerarCalendario()
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* HEADER */}
       <div>
         <h1 className="text-2xl font-heading font-bold text-foreground">Monitor de Hábitos</h1>
         <p className="text-muted-foreground">Acompanhe seus hábitos diários e conquiste recompensas</p>
       </div>
 
-      {/* Card de pontuação (Omitido marcação detalhada para ser breve, idêntico ao original) */}
+      {/* CARD DE PONTUAÇÃO */}
       <Card className="shadow-sm bg-gradient-to-r from-success-light to-primary/10">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-4xl font-heading font-extrabold text-primary">{pontosHoje.toLocaleString()} pts</p>
-              <p className="text-muted-foreground">Hoje</p>
+              <p className="text-muted-foreground">Ganhos Hoje</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-heading font-bold">{pontosSemana.toLocaleString()} pts</p>
-              <p className="text-muted-foreground">Esta semana</p>
+              {/* Mostra o total dinâmico atualizado em tempo real */}
+              <p className="text-2xl font-heading font-bold">{pontosTotaisGlobais.toLocaleString()} pts</p>
+              <p className="text-muted-foreground">Pontuação Global</p>
             </div>
           </div>
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2 text-sm">
               <span className="text-muted-foreground">Próxima recompensa</span>
-              <span className="font-medium">{pontosSemana.toLocaleString()} / {metaSemana.toLocaleString()} pts</span>
+              <span className="font-medium">{pontosTotaisGlobais.toLocaleString()} / {metaSemana.toLocaleString()} pts</span>
             </div>
-            <Progress value={(pontosSemana / metaSemana) * 100} className="h-3 [&>div]:bg-accent" />
+            <Progress value={(pontosTotaisGlobais / metaSemana) * 100} className="h-3 [&>div]:bg-accent" />
           </div>
+          
+          {/* STREAK EDITÁVEL */}
           <div className="mt-4 flex items-center gap-2 text-streak">
             <Flame className="w-5 h-5 animate-flame-pulse" />
-            <span className="font-medium">12 dias consecutivos de hábitos!</span>
+            {editandoStreak ? (
+              <Input 
+                type="number" 
+                value={streakDias} 
+                onChange={e => setStreakDias(Number(e.target.value))}
+                onBlur={() => setEditandoStreak(false)}
+                autoFocus
+                className="w-20 h-7"
+              />
+            ) : (
+              <span className="font-medium flex items-center gap-2 cursor-pointer hover:opacity-80" onClick={() => setEditandoStreak(true)}>
+                {streakDias} dias consecutivos de hábitos! <Edit2 className="w-3 h-3 text-muted-foreground" />
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Checklist de hábitos */}
+      {/* CHECKLIST DE HÁBITOS */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-heading font-bold text-lg">Hábitos de Hoje</h2>
@@ -177,55 +177,20 @@ export function Habitos() {
         </div>
       </div>
 
-      {/* Desafios e Modal de Criação */}
+      {/* DESAFIOS (AGORA BASEADOS NA PONTUAÇÃO GLOBAL) */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-heading font-bold text-lg">Desafios em Andamento</h2>
-          
-          {/* 4. MODAL CONECTADO AOS ESTADOS */}
+          <h2 className="font-heading font-bold text-lg">Metas Globais (Desafios)</h2>
           <Dialog open={modalDesafioAberto} onOpenChange={setModalDesafioAberto}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Plus className="w-4 h-4" /> Criar Desafio
-              </Button>
+              <Button variant="outline" size="sm" className="gap-2"><Plus className="w-4 h-4" /> Criar Desafio</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Criar Novo Desafio</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>Nome do desafio</Label>
-                  <Input 
-                    placeholder="Ex: Semana Produtiva" 
-                    value={novoDesafio.nome} 
-                    onChange={e => setNovoDesafio({...novoDesafio, nome: e.target.value})} 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Meta de pontos</Label>
-                  <Input 
-                    type="number" 
-                    placeholder="5000" 
-                    value={novoDesafio.meta} 
-                    onChange={e => setNovoDesafio({...novoDesafio, meta: e.target.value})} 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Recompensa</Label>
-                  <Input 
-                    placeholder="Ex: Jantar especial" 
-                    value={novoDesafio.recompensa} 
-                    onChange={e => setNovoDesafio({...novoDesafio, recompensa: e.target.value})} 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data limite</Label>
-                  <Input 
-                    type="date" 
-                    value={novoDesafio.prazo} 
-                    onChange={e => setNovoDesafio({...novoDesafio, prazo: e.target.value})} 
-                  />
-                </div>
-                {/* BOTÃO QUE DISPARA A FUNÇÃO */}
+                <div className="space-y-2"><Label>Nome do desafio</Label><Input value={novoDesafio.nome} onChange={e => setNovoDesafio({...novoDesafio, nome: e.target.value})} /></div>
+                <div className="space-y-2"><Label>Meta de pontos (Global)</Label><Input type="number" value={novoDesafio.meta} onChange={e => setNovoDesafio({...novoDesafio, meta: e.target.value})} /></div>
+                <div className="space-y-2"><Label>Recompensa</Label><Input value={novoDesafio.recompensa} onChange={e => setNovoDesafio({...novoDesafio, recompensa: e.target.value})} /></div>
                 <Button className="w-full" onClick={salvarDesafio}>Salvar Desafio</Button>
               </div>
             </DialogContent>
@@ -234,27 +199,29 @@ export function Habitos() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {desafios.map(desafio => {
-            const progresso = (desafio.atual / desafio.meta) * 100
-            const diasRestantes = Math.ceil((new Date(desafio.prazo).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+            // 3. LÓGICA DE DESAFIOS CUMULATIVOS
+            // Usa a pontuação global para preencher a barra de progresso
+            const progresso = Math.min((pontosTotaisGlobais / desafio.meta) * 100, 100)
+            const isConcluido = pontosTotaisGlobais >= desafio.meta
 
             return (
-              <Card key={desafio.id} className={cn("shadow-sm", desafio.concluido && "border-success bg-success-light cursor-pointer")} onClick={() => desafio.concluido && verConquista(desafio)}>
+              <Card key={desafio.id} className={cn("shadow-sm", isConcluido && "border-success bg-success-light cursor-pointer")} onClick={() => isConcluido && verConquista(desafio)}>
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="font-heading font-semibold">{desafio.nome}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {desafio.concluido ? <span className="text-success flex items-center gap-1"><Check className="w-4 h-4" /> Concluído!</span> : `${isNaN(diasRestantes) ? '--' : diasRestantes} dias restantes`}
+                        {isConcluido ? <span className="text-success flex items-center gap-1"><Check className="w-4 h-4" /> Desbloqueado!</span> : `Faltam ${desafio.meta - pontosTotaisGlobais} pts`}
                       </p>
                     </div>
-                    {desafio.concluido ? <Trophy className="w-6 h-6 text-accent" /> : <span className="text-2xl">🔒</span>}
+                    {isConcluido ? <Trophy className="w-6 h-6 text-accent" /> : <span className="text-2xl">🔒</span>}
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>{desafio.atual.toLocaleString()} / {desafio.meta.toLocaleString()} pts</span>
+                      <span>{pontosTotaisGlobais.toLocaleString()} / {desafio.meta.toLocaleString()} pts</span>
                       <span className="font-medium">{Math.round(progresso)}%</span>
                     </div>
-                    <Progress value={progresso} className={cn("h-2", desafio.concluido && "[&>div]:bg-success")} />
+                    <Progress value={progresso} className={cn("h-2", isConcluido && "[&>div]:bg-success")} />
                   </div>
                   <p className="mt-3 text-sm">
                     <span className="text-muted-foreground">Recompensa: </span>
@@ -266,9 +233,6 @@ export function Habitos() {
           })}
         </div>
       </div>
-
-      {/* Calendário e Overlay de Conquistas continuam iguais */}
-      {/* ... (omitidos para não poluir, mantêm exatamente o seu código original) ... */}
     </div>
   )
 }
