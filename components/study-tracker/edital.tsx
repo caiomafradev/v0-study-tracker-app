@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { 
   ChevronDown, ChevronUp, Check, ExternalLink, BookOpen, 
   Plus, Calendar, Wand2 
@@ -11,6 +11,7 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { MOCK_DATA, formatarTempoLegivel } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 
@@ -20,31 +21,84 @@ interface EditalProps {
 }
 
 export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
-  // 1. DADOS BASE SEGUROS
+  // 1. DADOS BASE
   const dados = MOCK_DATA?.[planoAtivo] || MOCK_DATA?.bb || { disciplinas: [], sessoes: [] }
 
   // 2. ESTADOS
-  const [disciplinasLocais, setDisciplinasLocais] = useState<any[]>(dados.disciplinas || [])
+  const [disciplinasLocais, setDisciplinasLocais] = useState<any[]>([])
   const [disciplinasExpandidas, setDisciplinasExpandidas] = useState<string[]>([])
+  
+  // Estados para importação IA
   const [modalImportacaoAberto, setModalImportacaoAberto] = useState(false)
   const [textoImportacao, setTextoImportacao] = useState('')
 
-  // 3. O MOTOR DE IMPORTAÇÃO (Reforçado e à prova de falhas)
+  // NOVO: Estados para adição manual
+  const [modalNovaDisciplina, setModalNovaDisciplina] = useState(false)
+  const [nomeNovaDisciplina, setNomeNovaDisciplina] = useState('')
+  const [addTopicoEm, setAddTopicoEm] = useState<string | null>(null) // Guarda qual disciplina está recebendo um tópico novo
+  const [nomeNovoTopico, setNomeNovoTopico] = useState('')
+
+  // 3. ISOLAMENTO DE CONCURSO (O Segredo do isolamento)
+  // Toda vez que o planoAtivo mudar, limpa e recarrega só as matérias dele
+  useEffect(() => {
+    const dadosDoPlano = MOCK_DATA?.[planoAtivo] || MOCK_DATA?.bb || { disciplinas: [], sessoes: [] }
+    setDisciplinasLocais(dadosDoPlano.disciplinas || [])
+    setDisciplinasExpandidas([]) // Fecha os menus abertos
+  }, [planoAtivo])
+
+  // 4. FUNÇÕES DE CRIAÇÃO MANUAL
+  const salvarNovaDisciplina = () => {
+    if (!nomeNovaDisciplina.trim()) return;
+    const cores = ['#10B981', '#6366F1', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+    
+    const novaDisciplina = {
+      id: `disc-manual-${Date.now()}`,
+      nome: nomeNovaDisciplina.trim(),
+      cor: cores[disciplinasLocais.length % cores.length],
+      topicos: [] // Nasce vazia
+    };
+
+    setDisciplinasLocais(prev => [...prev, novaDisciplina]);
+    setNomeNovaDisciplina('');
+    setModalNovaDisciplina(false);
+  }
+
+  const salvarNovoTopico = (disciplinaId: string) => {
+    if (!nomeNovoTopico.trim()) return;
+    
+    setDisciplinasLocais(prev => prev.map(d => {
+      if (d.id === disciplinaId) {
+        return {
+          ...d,
+          topicos: [...d.topicos, {
+            id: `top-manual-${Date.now()}`,
+            nome: nomeNovoTopico.trim(),
+            concluido: false,
+            acertos: 0,
+            erros: 0,
+            ultimaRevisao: null
+          }]
+        };
+      }
+      return d;
+    }));
+    
+    setNomeNovoTopico('');
+    setAddTopicoEm(null);
+  }
+
+  // 5. IMPORTAÇÃO INTELIGENTE (IA)
   const processarTextoEdital = () => {
     if (!textoImportacao.trim()) return
 
     const novasDisciplinas: any[] = []
     const cores = ['#10B981', '#6366F1', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4']
-
-    // Passo A: Separar o texto pelas disciplinas (ex: "1. NOME DA MATERIA")
-    // Usa uma regex que corta imediatamente antes de um dígito seguido de ponto e espaço.
     const blocosMateria = textoImportacao.split(/(?=\b\d+\.\s+[A-Z])/);
 
     blocosMateria.forEach(bloco => {
       const txt = bloco.trim();
       if (!txt) return;
 
-      // Pega o nome da disciplina (Até ao primeiro dois pontos)
       const matchDisc = txt.match(/^\d+\.\s+([^:]+)/);
       if (!matchDisc) return;
 
@@ -58,21 +112,17 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
         topicos: [] as any[]
       };
 
-      // Passo B: Separar os tópicos dentro desta disciplina (ex: "1.1 Nome do topico")
       const blocosTopico = conteudoRestante.split(/(?=\b\d+\.\d+\s+)/);
 
       blocosTopico.forEach(blocoT => {
         const txtT = blocoT.trim();
         if (!txtT) return;
 
-        // Extrai o número do tópico e guarda todo o texto seguinte como sendo o nome
         const matchNum = txtT.match(/^(\d+\.\d+)\s+(.+)/s);
         if (matchNum) {
-          const nomeTopico = matchNum[2].trim().replace(/\s+/g, ' '); // Limpa espaços extra
-          
           disciplina.topicos.push({
             id: `top-import-${Date.now()}-${Math.random()}`,
-            nome: nomeTopico,
+            nome: matchNum[2].trim().replace(/\s+/g, ' '),
             concluido: false,
             acertos: 0,
             erros: 0,
@@ -81,9 +131,7 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
         }
       });
 
-      if (disciplina.topicos.length > 0) {
-        novasDisciplinas.push(disciplina);
-      }
+      if (disciplina.topicos.length > 0) novasDisciplinas.push(disciplina);
     });
 
     if (novasDisciplinas.length === 0) {
@@ -96,11 +144,9 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
     setModalImportacaoAberto(false);
   };
 
-  // 4. CÁLCULOS SEGUROS
+  // 6. CÁLCULOS SEGUROS
   const totalTopicos = disciplinasLocais.reduce((acc, d) => acc + (d?.topicos?.length || 0), 0)
-  const topicosConcluidos = disciplinasLocais.reduce(
-    (acc, d) => acc + (d?.topicos?.filter((t: any) => t.concluido).length || 0), 0
-  )
+  const topicosConcluidos = disciplinasLocais.reduce((acc, d) => acc + (d?.topicos?.filter((t: any) => t.concluido).length || 0), 0)
   const progressoGeral = totalTopicos > 0 ? Math.round((topicosConcluidos / totalTopicos) * 100) : 0
 
   const hoje = new Date().toISOString().split('T')[0]
@@ -112,13 +158,7 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
           const disciplina = disciplinasLocais.find(d => d.id === sessao.disciplinaId)
           const topico = disciplina?.topicos?.find((t: any) => t.id === sessao.topicoId)
           if (topico && disciplina) {
-            revisoes.push({
-              topico: topico.nome,
-              disciplina: disciplina.nome,
-              disciplinaId: disciplina.id,
-              topicoId: topico.id,
-              atrasado: dataRevisao < hoje
-            })
+            revisoes.push({ topico: topico.nome, disciplina: disciplina.nome, disciplinaId: disciplina.id, topicoId: topico.id, atrasado: dataRevisao < hoje })
           }
         }
       })
@@ -126,23 +166,14 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
     return revisoes
   }, [dados, hoje, disciplinasLocais])
 
-  // 5. INTERAÇÕES
-  const toggleDisciplina = (id: string) => {
-    setDisciplinasExpandidas(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id])
-  }
+  // 7. INTERAÇÕES DE UI
+  const toggleDisciplina = (id: string) => setDisciplinasExpandidas(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id])
 
   const toggleTopico = (disciplinaId: string, topicoId: string, e: React.MouseEvent) => {
-    e.preventDefault(); // Impede comportamentos estranhos
-    e.stopPropagation(); // Impede de abrir/fechar a disciplina ao clicar no checkbox
-    
+    e.preventDefault(); e.stopPropagation();
     setDisciplinasLocais(prev => prev.map(disc => {
       if (disc.id === disciplinaId) {
-        return {
-          ...disc,
-          topicos: disc.topicos.map((t: any) => 
-            t.id === topicoId ? { ...t, concluido: !t.concluido } : t
-          )
-        };
+        return { ...disc, topicos: disc.topicos.map((t: any) => t.id === topicoId ? { ...t, concluido: !t.concluido } : t) };
       }
       return disc;
     }));
@@ -151,13 +182,14 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
   return (
     <div className="space-y-6">
       {/* CABEÇALHO */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-heading font-bold text-foreground">Edital Verticalizado</h1>
-          <p className="text-muted-foreground">Acompanhe o seu progresso no edital</p>
+          <p className="text-muted-foreground">Progresso do concurso ativo</p>
         </div>
         <div className="flex gap-2">
           
+          {/* MODAL IMPORTAÇÃO (IA) */}
           <Dialog open={modalImportacaoAberto} onOpenChange={setModalImportacaoAberto}>
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2 border-primary text-primary hover:bg-primary/10">
@@ -165,36 +197,42 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Wand2 className="w-5 h-5 text-primary"/> Importação Inteligente de Edital
-                </DialogTitle>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Importação Inteligente de Edital</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>Cole o texto do edital gerado pela IA ou copiado do PDF:</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Padrão suportado:<br/> 
-                    <strong>1. NOME DA MATÉRIA:</strong> 1.1 Nome do Tópico: detalhes...
-                  </p>
-                  <textarea 
-                    value={textoImportacao}
-                    onChange={(e) => setTextoImportacao(e.target.value)}
-                    className="w-full h-64 p-3 text-sm rounded-md border border-input bg-background outline-none focus:ring-2 focus:ring-primary/50"
-                    placeholder="Exemplo:&#10;1. DADOS & ANALYTICS: 1.1 Banco de Dados: Conceitos... 1.2 Modelagem de Dados: Conceitual..."
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setModalImportacaoAberto(false)}>Cancelar</Button>
-                  <Button onClick={processarTextoEdital} className="bg-primary hover:bg-primary/90 text-primary-foreground">Processar e Adicionar</Button>
-                </div>
+                <textarea 
+                  value={textoImportacao} onChange={(e) => setTextoImportacao(e.target.value)}
+                  className="w-full h-64 p-3 text-sm rounded-md border border-input bg-background"
+                  placeholder="Exemplo: 1. MATÉRIA: 1.1 Tópico..."
+                />
+                <Button onClick={processarTextoEdital} className="w-full bg-primary hover:bg-primary/90 text-white">Processar e Adicionar</Button>
               </div>
             </DialogContent>
           </Dialog>
 
-          <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
-            <Plus className="w-4 h-4" /> Nova Disciplina
-          </Button>
+          {/* MODAL NOVA DISCIPLINA MANUAL */}
+          <Dialog open={modalNovaDisciplina} onOpenChange={setModalNovaDisciplina}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Plus className="w-4 h-4" /> Nova Disciplina
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Adicionar Disciplina Manualmente</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Nome da Disciplina</Label>
+                  <Input 
+                    placeholder="Ex: Direito Constitucional" 
+                    value={nomeNovaDisciplina}
+                    onChange={(e) => setNomeNovaDisciplina(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && salvarNovaDisciplina()}
+                  />
+                </div>
+                <Button onClick={salvarNovaDisciplina} className="w-full">Salvar Disciplina</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
         </div>
       </div>
 
@@ -206,9 +244,7 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
             <span className="text-2xl font-heading font-bold text-primary">{progressoGeral}%</span>
           </div>
           <Progress value={progressoGeral} className="h-3" />
-          <p className="text-sm text-muted-foreground mt-2">
-            {topicosConcluidos} de {totalTopicos} tópicos concluídos
-          </p>
+          <p className="text-sm text-muted-foreground mt-2">{topicosConcluidos} de {totalTopicos} tópicos</p>
         </CardContent>
       </Card>
 
@@ -227,9 +263,8 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
                   <div>
                     <p className="font-medium">{revisao.topico}</p>
                     <p className="text-sm text-muted-foreground">{revisao.disciplina}</p>
-                    {revisao.atrasado && <Badge variant="destructive" className="mt-1 text-xs">Atrasado</Badge>}
                   </div>
-                  <Button size="sm" onClick={() => onOpenTimer?.({ plano: planoAtivo, disciplina: revisao.disciplinaId, topico: revisao.topicoId })} className="bg-secondary hover:bg-secondary/90 text-white">Revisar agora</Button>
+                  <Button size="sm" onClick={() => onOpenTimer?.({ plano: planoAtivo, disciplina: revisao.disciplinaId, topico: revisao.topicoId })} className="bg-secondary text-white">Revisar</Button>
                 </div>
               ))}
             </div>
@@ -237,17 +272,14 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
         </Card>
       )}
 
-      {/* LISTA DE DISCIPLINAS E TÓPICOS */}
+      {/* LISTA DE DISCIPLINAS */}
       <div className="space-y-4">
         {disciplinasLocais.map((disciplina) => {
           const isExpanded = disciplinasExpandidas.includes(disciplina.id)
           const topsConcluidos = disciplina?.topicos?.filter((t: any) => t.concluido).length || 0
           const totalTops = disciplina?.topicos?.length || 0
           const progresso = totalTops > 0 ? (topsConcluidos / totalTops) * 100 : 0
-          
-          const tempoTotal = dados?.sessoes
-            ?.filter((s: any) => s.disciplinaId === disciplina.id)
-            .reduce((acc: number, s: any) => acc + (s.duracaoSegundos || 0), 0) || 0
+          const tempoTotal = dados?.sessoes?.filter((s: any) => s.disciplinaId === disciplina.id).reduce((acc: number, s: any) => acc + (s.duracaoSegundos || 0), 0) || 0
 
           return (
             <Card key={disciplina.id} className="shadow-sm overflow-hidden">
@@ -267,49 +299,12 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
               {isExpanded && (
                 <div className="border-t border-border">
                   <div className="divide-y divide-border/50">
+                    
+                    {/* Tópicos */}
                     {disciplina?.topicos?.map((topico: any) => {
                       const total = (topico.acertos || 0) + (topico.erros || 0)
                       const aproveitamento = total > 0 ? (((topico.acertos || 0) / total) * 100).toFixed(1) : '—'
-                      const temRevisao = dados?.sessoes?.some((s: any) => s.topicoId === topico.id && s.revisoes?.some((r: string) => r >= hoje))
-
+                      
                       return (
                         <div key={topico.id} className={cn("px-6 py-3 flex items-center gap-4 transition-colors", topico.concluido && "bg-success-light/50")}>
-                          {/* CHECKBOX (Corrigido com event.stopPropagation) */}
-                          <button onClick={(e) => toggleTopico(disciplina.id, topico.id, e)} className={cn("w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-all", topico.concluido ? "bg-success border-success" : "border-muted-foreground hover:border-primary")}>
-                            {topico.concluido && <Check className="w-4 h-4 text-white" />}
-                          </button>
-                          
-                          <span className={cn("flex-1 font-body text-sm md:text-base", topico.concluido && "line-through text-muted-foreground")}>
-                            {topico.nome}
-                          </span>
-
-                          {temRevisao && <Badge variant="secondary" className="text-xs gap-1 hidden md:flex"><Calendar className="w-3 h-3" /> Revisão</Badge>}
-
-                          <div className="flex items-center gap-4 text-sm flex-shrink-0">
-                            <span className="text-success font-medium hidden sm:inline-block">✅ {topico.acertos || 0}</span>
-                            <span className="text-error font-medium hidden sm:inline-block">❌ {topico.erros || 0}</span>
-                            <span className="font-mono w-14 text-right">{aproveitamento}%</span>
-                            <Button variant="ghost" size="icon" className="h-8 w-8"><ExternalLink className="w-4 h-4 text-muted-foreground" /></Button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <div className="px-6 py-4 bg-muted/30 flex items-center justify-between">
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="hidden sm:inline-block">Tempo total: <strong className="text-foreground">{formatarTempoLegivel(tempoTotal)}</strong></span>
-                    </div>
-                    <Button onClick={() => onOpenTimer?.({ plano: planoAtivo, disciplina: disciplina.id })} className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
-                      <BookOpen className="w-4 h-4" /> Estudar
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </Card>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+                          <button onClick={(e) => toggleTopico(disciplina.id, topico.id, e)} className={cn("w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-all", topico.concluido ? "bg-success border-success" : "border-muted-foreground hover:border-primary")
