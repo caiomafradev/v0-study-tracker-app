@@ -13,7 +13,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
-import { MOCK_DATA, PLANOS, formatarTempoLegivel } from '@/lib/mock-data'
+import { PLANOS, formatarTempoLegivel } from '@/lib/mock-data'
+import { useStudy } from '@/contexts/StudyContext'
 import { cn } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -28,6 +29,9 @@ interface EstatisticasProps {
 type FiltroPeriodo = 'hoje' | 'semana' | 'mes' | 'total' | 'personalizado'
 
 export function Estatisticas({ planoAtivo = 'bb', onOpenTimer }: EstatisticasProps) {
+  // CONTEXT GLOBAL
+  const { dadosGerais, getDataLocal } = useStudy()
+  
   const [filtroPlano, setFiltroPlano] = useState<'ativo' | 'todos'>('ativo')
   const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('semana')
   const [abaDisciplina, setAbaDisciplina] = useState<'tempo' | 'questoes'>('tempo')
@@ -36,10 +40,10 @@ export function Estatisticas({ planoAtivo = 'bb', onOpenTimer }: EstatisticasPro
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
 
-  // Obter dados do plano selecionado
+  // Obter dados do plano selecionado (usando Context)
   const dadosPlanos = filtroPlano === 'ativo' 
-    ? { [planoAtivo]: MOCK_DATA[planoAtivo] }
-    : MOCK_DATA
+    ? { [planoAtivo]: dadosGerais[planoAtivo] }
+    : dadosGerais
 
   // 2. LÓGICA DE FOCOS DE ESTUDO (Piores Resultados)
   const focosRecomendados = useMemo(() => {
@@ -67,7 +71,7 @@ export function Estatisticas({ planoAtivo = 'bb', onOpenTimer }: EstatisticasPro
     return todosTopicos
       .sort((a, b) => a.aproveitamento - b.aproveitamento)
       .slice(0, 3);
-  }, [dadosPlanos]);
+  }, [dadosPlanos, dadosGerais]);
 
   // Cálculos de Totais (Mantidos do seu código original)
   const totais = useMemo(() => {
@@ -90,7 +94,7 @@ export function Estatisticas({ planoAtivo = 'bb', onOpenTimer }: EstatisticasPro
     const mediaPorDia = diasEstudados > 0 ? Math.round(tempoEstudo / diasEstudados) : 0
 
     return { tempoEstudo, tempoPausa, acertos, erros, totalQuestoes, aproveitamento, diasEstudados, mediaPorDia, streak, recordeStreak }
-  }, [dadosPlanos])
+  }, [dadosPlanos, dadosGerais])
 
   // Dados Mockados para os Gráficos
   const dadosPizza = [
@@ -120,16 +124,30 @@ export function Estatisticas({ planoAtivo = 'bb', onOpenTimer }: EstatisticasPro
       })
     })
     return stats.sort((a, b) => abaDisciplina === 'tempo' ? b.tempo - a.tempo : b.acertos + b.erros - a.acertos - a.erros)
-  }, [dadosPlanos, abaDisciplina])
+  }, [dadosPlanos, abaDisciplina, dadosGerais])
 
   const calendario = useMemo(() => {
-    const dias = []; const hoje = new Date()
+    const dias = []; 
+    const hoje = getDataLocal()
+    const hojeDate = new Date(hoje + 'T12:00:00') // Evita problemas de fuso
+    
     for (let i = 29; i >= 0; i--) {
-      const data = new Date(hoje); data.setDate(data.getDate() - i)
-      dias.push({ data: data.toISOString().split('T')[0], estudou: Math.random() > 0.3, isHoje: i === 0 })
+      const data = new Date(hojeDate); 
+      data.setDate(data.getDate() - i)
+      const dataStr = data.toISOString().split('T')[0]
+      
+      // Verifica se há sessões neste dia em algum plano
+      let estudou = false
+      Object.values(dadosGerais).forEach(plano => {
+        if (plano.sessoes.some(s => s.data === dataStr)) {
+          estudou = true
+        }
+      })
+      
+      dias.push({ data: dataStr, estudou, isHoje: i === 0 })
     }
     return dias
-  }, [])
+  }, [getDataLocal, dadosGerais])
 
   return (
     <div className="space-y-6">

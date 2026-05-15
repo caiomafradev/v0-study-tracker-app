@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MOCK_DATA, PLANOS, formatarTempo, formatarTempoCompleto } from '@/lib/mock-data'
+import { useStudy } from '@/contexts/StudyContext'
 import { cn } from '@/lib/utils'
 
 interface ModalEstudoProps {
@@ -25,6 +26,9 @@ type TipoEstudo = 'teoria' | 'questoes'
 type SomAmbiente = 'silencio' | 'chuva' | 'white' | 'brown' | 'jazz' | 'cafeteria'
 
 export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps) {
+  // CONTEXT GLOBAL
+  const { adicionarSessaoGlobal, atualizarStats, dadosGerais } = useStudy()
+  
   // 1. ESTADOS DE SELEÇÃO E MODO
   const [modoRegistro, setModoRegistro] = useState<'timer' | 'manual'>('timer')
   const [planoSelecionado, setPlanoSelecionado] = useState(preenchimento?.plano || 'bb')
@@ -58,7 +62,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
   const sourceNode = useRef<AudioBufferSourceNode | null>(null)
   const gainNode = useRef<GainNode | null>(null)
 
-  const dados = MOCK_DATA[planoSelecionado] || MOCK_DATA.bb
+  const dados = dadosGerais[planoSelecionado] || dadosGerais.bb
   const disciplinas = dados.disciplinas
   const topicos = disciplinas.find(d => d.id === disciplinaSelecionada)?.topicos || []
 
@@ -172,26 +176,38 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
 
   const aproveitamento = acertos + erros > 0 ? ((acertos / (acertos + erros)) * 100).toFixed(1) : '0.0'
 
-  // SALVAR NO SERVIDOR (Mock)
+  // SALVAR NO CONTEXT GLOBAL
   const salvarSessao = () => {
     const tempoFinal = modoRegistro === 'timer' ? Math.floor(tempoEstudoMs / 1000) : minutosManuais * 60
+    const pausaFinal = modoRegistro === 'timer' ? Math.floor(tempoPausaMs / 1000) : 0
     
     const sessaoData = {
-      plano: planoSelecionado,
-      disciplina: disciplinaSelecionada,
-      topico: topicoSelecionado,
-      tipo: tipoEstudo,
-      tempoSegundos: tempoFinal,
-      acertos,
-      erros,
-      linkRevisao,
-      linkQuestoes,
-      revisoes: revisoesSelecionadas,
-      data: new Date().toISOString()
+      disciplinaId: disciplinaSelecionada,
+      topicoId: topicoSelecionado,
+      tipo: tipoEstudo as 'teoria' | 'questoes',
+      duracaoSegundos: tempoFinal,
+      pausaSegundos: pausaFinal,
+      acertos: tipoEstudo === 'questoes' ? acertos : 0,
+      erros: tipoEstudo === 'questoes' ? erros : 0,
+      revisoes: revisoesSelecionadas.map(dias => {
+        const dataRevisao = new Date()
+        dataRevisao.setDate(dataRevisao.getDate() + dias)
+        return dataRevisao.toISOString().split('T')[0]
+      }),
     }
 
-    console.log("Enviando para o Servidor Global (Context):", sessaoData)
-    alert('Sessão registrada no servidor com sucesso!')
+    // Adiciona a sessão ao Context Global
+    adicionarSessaoGlobal(planoSelecionado, sessaoData)
+    
+    // Atualiza as estatísticas do plano
+    atualizarStats(
+      planoSelecionado, 
+      tempoFinal, 
+      tipoEstudo === 'questoes' ? acertos : 0, 
+      tipoEstudo === 'questoes' ? erros : 0
+    )
+
+    console.log("[v0] Sessão salva no Context Global:", sessaoData)
     resetar()
     onClose()
   }

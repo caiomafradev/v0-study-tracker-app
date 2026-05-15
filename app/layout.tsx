@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Outfit, DM_Sans, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { StudyProvider } from '@/contexts/StudyContext'
 import './globals.css'
 
 const outfit = Outfit({ 
@@ -52,7 +53,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`${outfit.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}>
       <body className="font-body antialiased bg-background">
-        {children}
+        <StudyProvider>
+          {children}
+        </StudyProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
