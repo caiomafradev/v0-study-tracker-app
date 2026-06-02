@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { PLANOS, MOCK_DATA } from '@/lib/mock-data'
+import { PLANOS } from '@/lib/mock-data'
 
 // Tipo para o preenchimento da modal
 interface PreenchimentoModal {
@@ -222,7 +222,7 @@ export default function StudyTrackerPage() {
   const renderTela = () => {
     switch (telaAtiva) {
       case 'home':
-        return <Dashboard planoAtivo={planoAtivo} />
+        return <Dashboard planoAtivo={planoAtivo} onOpenTimer={() => abrirModalEstudo()} />
       
       case 'edital':
         return <Edital planoAtivo={planoAtivo} onOpenTimer={abrirModalEstudo} />

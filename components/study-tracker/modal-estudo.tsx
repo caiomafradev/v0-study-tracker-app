@@ -27,7 +27,7 @@ type SomAmbiente = 'silencio' | 'chuva' | 'white' | 'brown' | 'jazz' | 'cafeteri
 
 export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps) {
   // CONTEXT GLOBAL
-  const { adicionarSessaoGlobal, atualizarStats, dadosGerais } = useStudy()
+  const { adicionarSessaoGlobal, atualizarStats, dadosGerais, getDataLocal } = useStudy()
   
   // 1. ESTADOS DE SELEÇÃO E MODO
   const [modoRegistro, setModoRegistro] = useState<'timer' | 'manual'>('timer')
@@ -181,6 +181,10 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
     const tempoFinal = modoRegistro === 'timer' ? Math.floor(tempoEstudoMs / 1000) : minutosManuais * 60
     const pausaFinal = modoRegistro === 'timer' ? Math.floor(tempoPausaMs / 1000) : 0
     
+    // Usa getDataLocal para calcular as datas de revisao (evita problemas de fuso)
+    const hoje = getDataLocal()
+    const hojeDate = new Date(hoje + 'T12:00:00')
+    
     const sessaoData = {
       disciplinaId: disciplinaSelecionada,
       topicoId: topicoSelecionado,
@@ -190,16 +194,16 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
       acertos: tipoEstudo === 'questoes' ? acertos : 0,
       erros: tipoEstudo === 'questoes' ? erros : 0,
       revisoes: revisoesSelecionadas.map(dias => {
-        const dataRevisao = new Date()
+        const dataRevisao = new Date(hojeDate)
         dataRevisao.setDate(dataRevisao.getDate() + dias)
         return dataRevisao.toISOString().split('T')[0]
       }),
     }
 
-    // Adiciona a sessão ao Context Global
+    // Adiciona a sessao ao Context Global
     adicionarSessaoGlobal(planoSelecionado, sessaoData)
     
-    // Atualiza as estatísticas do plano
+    // Atualiza as estatisticas do plano
     atualizarStats(
       planoSelecionado, 
       tempoFinal, 
@@ -207,7 +211,7 @@ export function ModalEstudo({ isOpen, onClose, preenchimento }: ModalEstudoProps
       tipoEstudo === 'questoes' ? erros : 0
     )
 
-    console.log("[v0] Sessão salva no Context Global:", sessaoData)
+    console.log("[v0] Sessao salva no Context Global:", sessaoData)
     resetar()
     onClose()
   }

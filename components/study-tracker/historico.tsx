@@ -5,48 +5,56 @@ import {
   Clock, 
   Pause, 
   Check, 
-  X as XIcon, 
   Calendar,
   Pencil,
   Trash2
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MOCK_DATA, PLANOS, formatarTempoLegivel } from '@/lib/mock-data'
+import { PLANOS, formatarTempoLegivel } from '@/lib/mock-data'
+import { useStudy } from '@/contexts/StudyContext'
 import { cn } from '@/lib/utils'
 
 interface HistoricoProps {
   planoAtivo?: string
 }
 
-type FiltroPeriodo = 'hoje' | '7dias' | '30dias' | 'total'
+type FiltroPeriodo = 'hoje' | 'semana' | 'mes' | 'total'
 
 export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
+  const { dadosGerais, getDataLocal, getSessoesFiltradas } = useStudy()
+  
   const [filtroPlano, setFiltroPlano] = useState<'ativo' | 'todos'>('ativo')
   const [filtroDisciplina, setFiltroDisciplina] = useState<string>('todas')
-  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('7dias')
+  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('semana')
 
   // Obter dados baseado no filtro
   const dadosPlanos = filtroPlano === 'ativo' 
-    ? { [planoAtivo]: MOCK_DATA[planoAtivo] }
-    : MOCK_DATA
+    ? { [planoAtivo]: dadosGerais[planoAtivo] }
+    : dadosGerais
 
-  // Combinar todas as sessões
+  // Combinar todas as sessoes usando o Context
   const todasSessoes = useMemo(() => {
     const sessoes: Array<{
-      sessao: typeof MOCK_DATA.bb.sessoes[0]
+      sessao: ReturnType<typeof getSessoesFiltradas>[0]
       planoId: string
-      disciplina: typeof MOCK_DATA.bb.disciplinas[0]
-      topico: typeof MOCK_DATA.bb.disciplinas[0]['topicos'][0]
+      disciplina: { id: string; nome: string; cor: string }
+      topico: { id: string; nome: string }
     }> = []
 
     Object.entries(dadosPlanos).forEach(([planoId, dados]) => {
+      if (!dados) return
       dados.sessoes.forEach(sessao => {
         const disciplina = dados.disciplinas.find(d => d.id === sessao.disciplinaId)
         const topico = disciplina?.topicos.find(t => t.id === sessao.topicoId)
         if (disciplina && topico) {
-          sessoes.push({ sessao, planoId, disciplina, topico })
+          sessoes.push({ 
+            sessao, 
+            planoId, 
+            disciplina: { id: disciplina.id, nome: disciplina.nome, cor: disciplina.cor },
+            topico: { id: topico.id, nome: topico.nome }
+          })
         }
       })
     })
@@ -54,10 +62,10 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
     return sessoes.sort((a, b) => b.sessao.data.localeCompare(a.sessao.data))
   }, [dadosPlanos])
 
-  // Filtrar por período
+  // Filtrar por periodo usando getDataLocal
   const sessoesFiltradas = useMemo(() => {
-    const hoje = new Date()
-    const hojeISO = hoje.toISOString().split('T')[0]
+    const hoje = getDataLocal()
+    const hojeDate = new Date(hoje + 'T12:00:00')
     
     return todasSessoes.filter(({ sessao, disciplina }) => {
       // Filtro de disciplina
@@ -65,22 +73,22 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
         return false
       }
 
-      // Filtro de período
-      const dataSessao = new Date(sessao.data)
-      const diffDias = Math.floor((hoje.getTime() - dataSessao.getTime()) / (1000 * 60 * 60 * 24))
+      // Filtro de periodo
+      const dataSessaoDate = new Date(sessao.data + 'T12:00:00')
+      const diffDias = Math.floor((hojeDate.getTime() - dataSessaoDate.getTime()) / (1000 * 60 * 60 * 24))
 
       switch (filtroPeriodo) {
         case 'hoje':
-          return sessao.data === hojeISO
-        case '7dias':
+          return sessao.data === hoje
+        case 'semana':
           return diffDias <= 7
-        case '30dias':
+        case 'mes':
           return diffDias <= 30
         default:
           return true
       }
     })
-  }, [todasSessoes, filtroDisciplina, filtroPeriodo])
+  }, [todasSessoes, filtroDisciplina, filtroPeriodo, getDataLocal])
 
   // Agrupar por data
   const sessoesAgrupadas = useMemo(() => {
@@ -108,10 +116,11 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
     return { tempoEstudo, tempoPausa, acertos, erros, aproveitamento }
   }, [sessoesFiltradas])
 
-  // Disciplinas disponíveis
+  // Disciplinas disponiveis
   const disciplinasDisponiveis = useMemo(() => {
     const disc = new Map<string, string>()
     Object.values(dadosPlanos).forEach(dados => {
+      if (!dados) return
       dados.disciplinas.forEach(d => disc.set(d.id, d.nome))
     })
     return Array.from(disc.entries())
@@ -130,8 +139,8 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Histórico de Estudos</h1>
-        <p className="text-muted-foreground">Revise suas sessões de estudo anteriores</p>
+        <h1 className="text-2xl font-heading font-bold text-foreground">Historico de Estudos</h1>
+        <p className="text-muted-foreground">Revise suas sessoes de estudo anteriores</p>
       </div>
 
       {/* Filtros */}
@@ -170,9 +179,9 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
           ))}
         </select>
 
-        {/* Pills período */}
+        {/* Pills periodo */}
         <div className="flex gap-1 bg-muted rounded-lg p-1">
-          {(['hoje', '7dias', '30dias', 'total'] as FiltroPeriodo[]).map(periodo => (
+          {(['hoje', 'semana', 'mes', 'total'] as FiltroPeriodo[]).map(periodo => (
             <button
               key={periodo}
               onClick={() => setFiltroPeriodo(periodo)}
@@ -184,8 +193,8 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
               )}
             >
               {periodo === 'hoje' && 'Hoje'}
-              {periodo === '7dias' && '7 dias'}
-              {periodo === '30dias' && '30 dias'}
+              {periodo === 'semana' && '7 dias'}
+              {periodo === 'mes' && '30 dias'}
               {periodo === 'total' && 'Total'}
             </button>
           ))}
@@ -249,7 +258,7 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
       {Object.keys(sessoesAgrupadas).length === 0 ? (
         <Card className="shadow-sm">
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Nenhuma sessão encontrada para os filtros selecionados.</p>
+            <p className="text-muted-foreground">Nenhuma sessao encontrada para os filtros selecionados.</p>
           </CardContent>
         </Card>
       ) : (
@@ -271,7 +280,7 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
                   </span>
                 </div>
 
-                {/* Cards de sessão */}
+                {/* Cards de sessao */}
                 <div className="space-y-3">
                   {sessoes.map(({ sessao, planoId, disciplina, topico }) => {
                     const total = sessao.acertos + sessao.erros
@@ -298,14 +307,14 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
                                     : "bg-secondary/10 text-secondary"
                                 )}
                               >
-                                {sessao.tipo === 'teoria' ? 'TEORIA' : 'QUESTÕES'}
+                                {sessao.tipo === 'teoria' ? 'TEORIA' : 'QUESTOES'}
                               </Badge>
 
                               {/* Nome */}
                               <p className="font-heading font-semibold">{disciplina.nome}</p>
                               <p className="text-sm text-muted-foreground">{topico.nome}</p>
 
-                              {/* Métricas */}
+                              {/* Metricas */}
                               <div className="flex items-center gap-4 mt-3 text-sm">
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-4 h-4 text-primary" />
@@ -317,8 +326,8 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
                                 </span>
                                 {sessao.tipo === 'questoes' && (
                                   <>
-                                    <span className="text-success font-medium">✅ {sessao.acertos}</span>
-                                    <span className="text-error font-medium">❌ {sessao.erros}</span>
+                                    <span className="text-success font-medium">✓ {sessao.acertos}</span>
+                                    <span className="text-error font-medium">✗ {sessao.erros}</span>
                                     {aproveitamento && (
                                       <span className="font-mono font-medium">{aproveitamento}%</span>
                                     )}
@@ -326,18 +335,18 @@ export function Historico({ planoAtivo = 'bb' }: HistoricoProps) {
                                 )}
                               </div>
 
-                              {/* Revisão agendada */}
+                              {/* Revisao agendada */}
                               {sessao.revisoes.length > 0 && (
                                 <div className="mt-2">
                                   <Badge variant="secondary" className="gap-1 text-xs">
                                     <Calendar className="w-3 h-3" />
-                                    Revisão: {sessao.revisoes[0]}
+                                    Revisao: {sessao.revisoes[0]}
                                   </Badge>
                                 </div>
                               )}
                             </div>
 
-                            {/* Ações (aparecem no hover) */}
+                            {/* Acoes (aparecem no hover) */}
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Button variant="ghost" size="icon" className="h-8 w-8">
                                 <Pencil className="w-4 h-4 text-muted-foreground" />

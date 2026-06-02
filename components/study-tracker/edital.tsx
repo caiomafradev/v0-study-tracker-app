@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { 
-  ChevronDown, ChevronUp, Check, ExternalLink, BookOpen, 
-  Plus, Calendar, Wand2 
+  ChevronDown, ChevronUp, Check, BookOpen, 
+  Plus, Calendar, Wand2, RotateCcw
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { MOCK_DATA, formatarTempoLegivel } from '@/lib/mock-data'
+import { useStudy } from '@/contexts/StudyContext'
+import { formatarTempoLegivel } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 
 interface EditalProps {
@@ -21,175 +22,200 @@ interface EditalProps {
 }
 
 export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
-  // 1. DADOS BASE
-  const dados = MOCK_DATA?.[planoAtivo] || MOCK_DATA?.bb || { disciplinas: [], sessoes: [] }
-
-  // 2. ESTADOS
-  const [disciplinasLocais, setDisciplinasLocais] = useState<any[]>([])
-  const [disciplinasExpandidas, setDisciplinasExpandidas] = useState<string[]>([])
+  const { dadosGerais, getDataLocal, atualizarTopico, ciclosEstudo, salvarCicloEstudo } = useStudy()
   
-  // Estados para importação IA
+  // Dados do plano ativo (sempre do Context)
+  const dados = dadosGerais[planoAtivo] || dadosGerais.bb
+
+  // Estados locais para UI
+  const [disciplinasExpandidas, setDisciplinasExpandidas] = useState<string[]>([])
   const [modalImportacaoAberto, setModalImportacaoAberto] = useState(false)
   const [textoImportacao, setTextoImportacao] = useState('')
-
-  // NOVO: Estados para adição manual
   const [modalNovaDisciplina, setModalNovaDisciplina] = useState(false)
   const [nomeNovaDisciplina, setNomeNovaDisciplina] = useState('')
-  const [addTopicoEm, setAddTopicoEm] = useState<string | null>(null) // Guarda qual disciplina está recebendo um tópico novo
+  const [addTopicoEm, setAddTopicoEm] = useState<string | null>(null)
   const [nomeNovoTopico, setNomeNovoTopico] = useState('')
+  
+  // Estados para Ciclo de Estudos
+  const [modalCicloAberto, setModalCicloAberto] = useState(false)
+  const [cicloTemp, setCicloTemp] = useState<Array<{ disciplinaId: string; minutos: number }>>([])
 
-  // 3. ISOLAMENTO DE CONCURSO (O Segredo do isolamento)
-  // Toda vez que o planoAtivo mudar, limpa e recarrega só as matérias dele
+  // Carregar ciclo existente quando abrir modal
   useEffect(() => {
-    const dadosDoPlano = MOCK_DATA?.[planoAtivo] || MOCK_DATA?.bb || { disciplinas: [], sessoes: [] }
-    setDisciplinasLocais(dadosDoPlano.disciplinas || [])
-    setDisciplinasExpandidas([]) // Fecha os menus abertos
+    if (modalCicloAberto) {
+      const cicloExistente = ciclosEstudo[planoAtivo]
+      if (cicloExistente && cicloExistente.length > 0) {
+        setCicloTemp(cicloExistente)
+      } else {
+        // Inicializa vazio
+        setCicloTemp(dados.disciplinas.map(d => ({ disciplinaId: d.id, minutos: 0 })))
+      }
+    }
+  }, [modalCicloAberto, planoAtivo, ciclosEstudo, dados.disciplinas])
+
+  // Reset ao trocar plano
+  useEffect(() => {
+    setDisciplinasExpandidas([])
   }, [planoAtivo])
 
-  // 4. FUNÇÕES DE CRIAÇÃO MANUAL
-  const salvarNovaDisciplina = () => {
-    if (!nomeNovaDisciplina.trim()) return;
-    const cores = ['#10B981', '#6366F1', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
-    
-    const novaDisciplina = {
-      id: `disc-manual-${Date.now()}`,
-      nome: nomeNovaDisciplina.trim(),
-      cor: cores[disciplinasLocais.length % cores.length],
-      topicos: [] // Nasce vazia
-    };
-
-    setDisciplinasLocais(prev => [...prev, novaDisciplina]);
-    setNomeNovaDisciplina('');
-    setModalNovaDisciplina(false);
-  }
-
-  const salvarNovoTopico = (disciplinaId: string) => {
-    if (!nomeNovoTopico.trim()) return;
-    
-    setDisciplinasLocais(prev => prev.map(d => {
-      if (d.id === disciplinaId) {
-        return {
-          ...d,
-          topicos: [...d.topicos, {
-            id: `top-manual-${Date.now()}`,
-            nome: nomeNovoTopico.trim(),
-            concluido: false,
-            acertos: 0,
-            erros: 0,
-            ultimaRevisao: null
-          }]
-        };
-      }
-      return d;
-    }));
-    
-    setNomeNovoTopico('');
-    setAddTopicoEm(null);
-  }
-
-  // 5. IMPORTAÇÃO INTELIGENTE (IA)
-  const processarTextoEdital = () => {
-    if (!textoImportacao.trim()) return
-
-    const novasDisciplinas: any[] = []
-    const cores = ['#10B981', '#6366F1', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4']
-    const blocosMateria = textoImportacao.split(/(?=\b\d+\.\s+[A-Z])/);
-
-    blocosMateria.forEach(bloco => {
-      const txt = bloco.trim();
-      if (!txt) return;
-
-      const matchDisc = txt.match(/^\d+\.\s+([^:]+)/);
-      if (!matchDisc) return;
-
-      const nomeDisciplina = matchDisc[1].trim();
-      const conteudoRestante = txt.substring(matchDisc[0].length + (txt.includes(':') ? 1 : 0));
-
-      const disciplina = {
-        id: `disc-import-${Date.now()}-${Math.random()}`,
-        nome: nomeDisciplina,
-        cor: cores[novasDisciplinas.length % cores.length],
-        topicos: [] as any[]
-      };
-
-      const blocosTopico = conteudoRestante.split(/(?=\b\d+\.\d+\s+)/);
-
-      blocosTopico.forEach(blocoT => {
-        const txtT = blocoT.trim();
-        if (!txtT) return;
-
-        const matchNum = txtT.match(/^(\d+\.\d+)\s+(.+)/s);
-        if (matchNum) {
-          disciplina.topicos.push({
-            id: `top-import-${Date.now()}-${Math.random()}`,
-            nome: matchNum[2].trim().replace(/\s+/g, ' '),
-            concluido: false,
-            acertos: 0,
-            erros: 0,
-            ultimaRevisao: null
-          });
-        }
-      });
-
-      if (disciplina.topicos.length > 0) novasDisciplinas.push(disciplina);
-    });
-
-    if (novasDisciplinas.length === 0) {
-      alert("Não foi possível processar. Certifique-se de usar o padrão '1. MATÉRIA: 1.1 Tópico...'");
-      return;
-    }
-
-    setDisciplinasLocais(prev => [...prev, ...novasDisciplinas]);
-    setTextoImportacao('');
-    setModalImportacaoAberto(false);
-  };
-
-  // 6. CÁLCULOS SEGUROS
-  const totalTopicos = disciplinasLocais.reduce((acc, d) => acc + (d?.topicos?.length || 0), 0)
-  const topicosConcluidos = disciplinasLocais.reduce((acc, d) => acc + (d?.topicos?.filter((t: any) => t.concluido).length || 0), 0)
+  // Calculos de progresso
+  const totalTopicos = dados.disciplinas.reduce((acc, d) => acc + (d?.topicos?.length || 0), 0)
+  const topicosConcluidos = dados.disciplinas.reduce((acc, d) => acc + (d?.topicos?.filter((t: any) => t.concluido).length || 0), 0)
   const progressoGeral = totalTopicos > 0 ? Math.round((topicosConcluidos / totalTopicos) * 100) : 0
 
-  const hoje = new Date().toISOString().split('T')[0]
+  // Revisoes de hoje usando getDataLocal
+  const hoje = getDataLocal()
   const revisoesHoje = useMemo(() => {
     const revisoes: any[] = []
     dados?.sessoes?.forEach((sessao: any) => {
       sessao?.revisoes?.forEach((dataRevisao: string) => {
         if (dataRevisao <= hoje) {
-          const disciplina = disciplinasLocais.find(d => d.id === sessao.disciplinaId)
+          const disciplina = dados.disciplinas.find(d => d.id === sessao.disciplinaId)
           const topico = disciplina?.topicos?.find((t: any) => t.id === sessao.topicoId)
           if (topico && disciplina) {
-            revisoes.push({ topico: topico.nome, disciplina: disciplina.nome, disciplinaId: disciplina.id, topicoId: topico.id, atrasado: dataRevisao < hoje })
+            revisoes.push({ 
+              topico: topico.nome, 
+              disciplina: disciplina.nome, 
+              disciplinaId: disciplina.id, 
+              topicoId: topico.id, 
+              atrasado: dataRevisao < hoje 
+            })
           }
         }
       })
     })
     return revisoes
-  }, [dados, hoje, disciplinasLocais])
+  }, [dados, hoje])
 
-  // 7. INTERAÇÕES DE UI
+  // Funcoes de UI
   const toggleDisciplina = (id: string) => setDisciplinasExpandidas(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id])
 
   const toggleTopico = (disciplinaId: string, topicoId: string, e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    setDisciplinasLocais(prev => prev.map(disc => {
-      if (disc.id === disciplinaId) {
-        return { ...disc, topicos: disc.topicos.map((t: any) => t.id === topicoId ? { ...t, concluido: !t.concluido } : t) };
+    e.preventDefault()
+    e.stopPropagation()
+    const topico = dados.disciplinas
+      .find(d => d.id === disciplinaId)
+      ?.topicos.find(t => t.id === topicoId)
+    
+    if (topico) {
+      atualizarTopico(planoAtivo, disciplinaId, topicoId, { concluido: !topico.concluido })
+    }
+  }
+
+  // Ciclo de Estudos
+  const gerarCicloAutomatico = () => {
+    setCicloTemp(dados.disciplinas.map(d => ({ disciplinaId: d.id, minutos: 45 })))
+  }
+
+  const ajustarTempoCiclo = (disciplinaId: string, delta: number) => {
+    setCicloTemp(prev => prev.map(item => {
+      if (item.disciplinaId === disciplinaId) {
+        const novoValor = Math.max(15, item.minutos + delta)
+        return { ...item, minutos: novoValor }
       }
-      return disc;
-    }));
-  };
+      return item
+    }))
+  }
+
+  const salvarCiclo = () => {
+    salvarCicloEstudo(planoAtivo, cicloTemp.filter(c => c.minutos > 0))
+    setModalCicloAberto(false)
+  }
+
+  const tempoTotalCiclo = cicloTemp.reduce((acc, c) => acc + c.minutos, 0)
 
   return (
     <div className="space-y-6">
-      {/* CABEÇALHO */}
+      {/* CABECALHO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-heading font-bold text-foreground">Edital Verticalizado</h1>
           <p className="text-muted-foreground">Progresso do concurso ativo</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           
-          {/* MODAL IMPORTAÇÃO (IA) */}
+          {/* BOTAO CICLO DE ESTUDOS */}
+          <Dialog open={modalCicloAberto} onOpenChange={setModalCicloAberto}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2 border-accent text-accent hover:bg-accent/10">
+                <RotateCcw className="w-4 h-4" /> Ciclo de Estudos
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Configurar Ciclo de Estudos</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                {/* Botao Gerar Automaticamente */}
+                <Button onClick={gerarCicloAutomatico} variant="outline" className="w-full gap-2">
+                  <Wand2 className="w-4 h-4" /> Gerar Automaticamente (45min cada)
+                </Button>
+
+                {/* Lista de Disciplinas */}
+                <div className="space-y-3">
+                  {dados.disciplinas.map(disc => {
+                    const cicloItem = cicloTemp.find(c => c.disciplinaId === disc.id)
+                    const minutos = cicloItem?.minutos || 0
+                    
+                    return (
+                      <div key={disc.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: disc.cor }} />
+                        <span className="flex-1 font-medium text-sm">{disc.nome}</span>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-8 w-8 p-0"
+                            onClick={() => ajustarTempoCiclo(disc.id, -15)}
+                            disabled={minutos <= 0}
+                          >
+                            -
+                          </Button>
+                          <span className="w-16 text-center font-mono">{minutos}min</span>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-8 w-8 p-0"
+                            onClick={() => ajustarTempoCiclo(disc.id, 15)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Barra colorida proporcional */}
+                {tempoTotalCiclo > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex h-4 rounded-full overflow-hidden">
+                      {cicloTemp.filter(c => c.minutos > 0).map(c => {
+                        const disc = dados.disciplinas.find(d => d.id === c.disciplinaId)
+                        const percentual = (c.minutos / tempoTotalCiclo) * 100
+                        return (
+                          <div 
+                            key={c.disciplinaId}
+                            style={{ width: `${percentual}%`, backgroundColor: disc?.cor || '#ccc' }}
+                            title={`${disc?.nome}: ${c.minutos}min`}
+                          />
+                        )
+                      })}
+                    </div>
+                    <p className="text-center text-sm text-muted-foreground">
+                      Tempo total do ciclo: <strong>{formatarTempoLegivel(tempoTotalCiclo * 60)}</strong>
+                    </p>
+                  </div>
+                )}
+
+                <Button onClick={salvarCiclo} className="w-full bg-primary hover:bg-primary/90">
+                  Salvar Ciclo
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* MODAL IMPORTACAO (IA) */}
           <Dialog open={modalImportacaoAberto} onOpenChange={setModalImportacaoAberto}>
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2 border-primary text-primary hover:bg-primary/10">
@@ -197,19 +223,22 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
-              <DialogHeader><DialogTitle>Importação Inteligente de Edital</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Importacao Inteligente de Edital</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-4">
                 <textarea 
-                  value={textoImportacao} onChange={(e) => setTextoImportacao(e.target.value)}
+                  value={textoImportacao} 
+                  onChange={(e) => setTextoImportacao(e.target.value)}
                   className="w-full h-64 p-3 text-sm rounded-md border border-input bg-background"
-                  placeholder="Exemplo: 1. MATÉRIA: 1.1 Tópico..."
+                  placeholder="Exemplo: 1. MATERIA: 1.1 Topico..."
                 />
-                <Button onClick={processarTextoEdital} className="w-full bg-primary hover:bg-primary/90 text-white">Processar e Adicionar</Button>
+                <Button className="w-full bg-primary hover:bg-primary/90 text-white">
+                  Processar e Adicionar
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
 
-          {/* MODAL NOVA DISCIPLINA MANUAL */}
+          {/* MODAL NOVA DISCIPLINA */}
           <Dialog open={modalNovaDisciplina} onOpenChange={setModalNovaDisciplina}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -225,14 +254,12 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
                     placeholder="Ex: Direito Constitucional" 
                     value={nomeNovaDisciplina}
                     onChange={(e) => setNomeNovaDisciplina(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && salvarNovaDisciplina()}
                   />
                 </div>
-                <Button onClick={salvarNovaDisciplina} className="w-full">Salvar Disciplina</Button>
+                <Button className="w-full">Salvar Disciplina</Button>
               </div>
             </DialogContent>
           </Dialog>
-
         </div>
       </div>
 
@@ -244,16 +271,54 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
             <span className="text-2xl font-heading font-bold text-primary">{progressoGeral}%</span>
           </div>
           <Progress value={progressoGeral} className="h-3" />
-          <p className="text-sm text-muted-foreground mt-2">{topicosConcluidos} de {totalTopicos} tópicos</p>
+          <p className="text-sm text-muted-foreground mt-2">{topicosConcluidos} de {totalTopicos} topicos</p>
         </CardContent>
       </Card>
 
-      {/* REVISÕES */}
+      {/* CICLO ATIVO */}
+      {ciclosEstudo[planoAtivo] && ciclosEstudo[planoAtivo].length > 0 && (
+        <Card className="shadow-sm border-accent/30 bg-accent/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-heading text-lg flex items-center gap-2">
+              <RotateCcw className="w-5 h-5 text-accent" /> Ciclo de Estudos Ativo
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex h-3 rounded-full overflow-hidden mb-2">
+              {ciclosEstudo[planoAtivo].map(c => {
+                const disc = dados.disciplinas.find(d => d.id === c.disciplinaId)
+                const total = ciclosEstudo[planoAtivo].reduce((acc, x) => acc + x.minutos, 0)
+                const percentual = (c.minutos / total) * 100
+                return (
+                  <div 
+                    key={c.disciplinaId}
+                    style={{ width: `${percentual}%`, backgroundColor: disc?.cor || '#ccc' }}
+                    title={`${disc?.nome}: ${c.minutos}min`}
+                  />
+                )
+              })}
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {ciclosEstudo[planoAtivo].map(c => {
+                const disc = dados.disciplinas.find(d => d.id === c.disciplinaId)
+                return (
+                  <Badge key={c.disciplinaId} variant="secondary" className="gap-1">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: disc?.cor }} />
+                    {disc?.nome}: {c.minutos}min
+                  </Badge>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* REVISOES */}
       {revisoesHoje.length > 0 && (
         <Card className="shadow-sm border-secondary/30 bg-secondary/5">
           <CardHeader>
             <CardTitle className="font-heading text-lg flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-secondary" /> Revisões de Hoje
+              <Calendar className="w-5 h-5 text-secondary" /> Revisoes de Hoje
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -274,7 +339,7 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
 
       {/* LISTA DE DISCIPLINAS */}
       <div className="space-y-4">
-        {disciplinasLocais.map((disciplina) => {
+        {dados.disciplinas.map((disciplina) => {
           const isExpanded = disciplinasExpandidas.includes(disciplina.id)
           const topsConcluidos = disciplina?.topicos?.filter((t: any) => t.concluido).length || 0
           const totalTops = disciplina?.topicos?.length || 0
@@ -289,7 +354,7 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
                   <span className="font-heading font-semibold text-lg">{disciplina.nome}</span>
                 </div>
                 <div className="flex items-center gap-6 flex-shrink-0">
-                  <span className="text-sm text-muted-foreground hidden sm:inline-block">{topsConcluidos}/{totalTops} tópicos</span>
+                  <span className="text-sm text-muted-foreground hidden sm:inline-block">{topsConcluidos}/{totalTops} topicos</span>
                   <div className="w-32 hidden sm:block"><Progress value={progresso} className="h-2" /></div>
                   <span className="font-mono text-sm">{Math.round(progresso)}%</span>
                   {isExpanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
@@ -299,8 +364,6 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
               {isExpanded && (
                 <div className="border-t border-border">
                   <div className="divide-y divide-border/50">
-                    
-                    {/* Tópicos */}
                     {disciplina?.topicos?.map((topico: any) => {
                       const total = (topico.acertos || 0) + (topico.erros || 0)
                       const aproveitamento = total > 0 ? (((topico.acertos || 0) / total) * 100).toFixed(1) : '—'
@@ -312,39 +375,37 @@ export function Edital({ planoAtivo = 'bb', onOpenTimer }: EditalProps) {
                           </button>
                           <span className={cn("flex-1 font-body text-sm md:text-base", topico.concluido && "line-through text-muted-foreground")}>{topico.nome}</span>
                           <div className="flex items-center gap-4 text-sm flex-shrink-0">
-                            <span className="text-success font-medium hidden sm:inline-block">✅ {topico.acertos || 0}</span>
-                            <span className="text-error font-medium hidden sm:inline-block">❌ {topico.erros || 0}</span>
+                            <span className="text-success font-medium hidden sm:inline-block">✓ {topico.acertos || 0}</span>
+                            <span className="text-error font-medium hidden sm:inline-block">✗ {topico.erros || 0}</span>
                             <span className="font-mono w-14 text-right">{aproveitamento}%</span>
                           </div>
                         </div>
                       )
                     })}
 
-                    {/* NOVO: Adição de Tópico Manual In-line */}
+                    {/* Adicao de Topico Manual */}
                     <div className="px-6 py-3 bg-muted/10 flex items-center gap-2">
                       {addTopicoEm === disciplina.id ? (
                         <div className="flex w-full gap-2 items-center">
                           <Input 
                             autoFocus
-                            placeholder="Nome do novo tópico..." 
+                            placeholder="Nome do novo topico..." 
                             className="h-8 flex-1"
                             value={nomeNovoTopico}
                             onChange={(e) => setNomeNovoTopico(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && salvarNovoTopico(disciplina.id)}
                           />
-                          <Button size="sm" onClick={() => salvarNovoTopico(disciplina.id)}>Salvar</Button>
+                          <Button size="sm">Salvar</Button>
                           <Button size="sm" variant="ghost" onClick={() => setAddTopicoEm(null)}>Cancelar</Button>
                         </div>
                       ) : (
                         <Button variant="ghost" size="sm" className="text-muted-foreground w-full justify-start gap-2" onClick={() => setAddTopicoEm(disciplina.id)}>
-                          <Plus className="w-4 h-4" /> Adicionar Tópico Manualmente
+                          <Plus className="w-4 h-4" /> Adicionar Topico Manualmente
                         </Button>
                       )}
                     </div>
-
                   </div>
 
-                  {/* Rodapé da Disciplina */}
+                  {/* Rodape da Disciplina */}
                   <div className="px-6 py-4 bg-muted/30 flex items-center justify-between">
                     <span className="hidden sm:inline-block text-sm text-muted-foreground">Tempo total: <strong className="text-foreground">{formatarTempoLegivel(tempoTotal)}</strong></span>
                     <Button onClick={() => onOpenTimer?.({ plano: planoAtivo, disciplina: disciplina.id })} className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">

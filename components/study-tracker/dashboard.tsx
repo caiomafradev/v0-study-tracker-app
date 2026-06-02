@@ -12,11 +12,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { 
-  MOCK_DATA, 
-  PLANOS, 
-  formatarTempoLegivel 
-} from '@/lib/mock-data'
+import { PLANOS, formatarTempoLegivel } from '@/lib/mock-data'
+import { useStudy } from '@/contexts/StudyContext'
 import {
   BarChart,
   Bar,
@@ -29,15 +26,17 @@ import {
 
 interface DashboardProps {
   planoAtivo?: string
+  onOpenTimer?: () => void
 }
 
-export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
+export function Dashboard({ planoAtivo = 'bb', onOpenTimer }: DashboardProps) {
+  const { dadosGerais, getDataLocal } = useStudy()
   const [bannerVisivel, setBannerVisivel] = useState(true)
   
-  const dados = MOCK_DATA[planoAtivo] || MOCK_DATA.bb
+  const dados = dadosGerais[planoAtivo] || dadosGerais.bb
   const planoInfo = PLANOS.find(p => p.id === planoAtivo) || PLANOS[0]
 
-  // Calcular métricas
+  // Calcular metricas
   const tempoTotal = formatarTempoLegivel(dados.stats.tempoTotalSegundos)
   const desempenho = dados.stats.totalQuestoes > 0 
     ? ((dados.stats.totalAcertos / dados.stats.totalQuestoes) * 100).toFixed(1)
@@ -50,74 +49,91 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
   )
   const progressoEdital = totalTopicos > 0 ? Math.round((topicosConcluidos / totalTopicos) * 100) : 0
 
-  // Gerar calendário de 30 dias
+  // Verifica se estudou hoje
+  const hoje = getDataLocal()
+  const estudouHoje = dados.sessoes.some(s => s.data === hoje)
+
+  // Gerar calendario de 30 dias usando getDataLocal
   const calendario = useMemo(() => {
     const dias = []
-    const hoje = new Date()
+    const hojeStr = getDataLocal()
+    const hojeDate = new Date(hojeStr + 'T12:00:00')
     
     for (let i = 29; i >= 0; i--) {
-      const data = new Date(hoje)
+      const data = new Date(hojeDate)
       data.setDate(data.getDate() - i)
       const dataISO = data.toISOString().split('T')[0]
       const sessoesNoDia = dados.sessoes.filter(s => s.data === dataISO)
-      const futuro = i < 0
       
       dias.push({
         data: dataISO,
         estudou: sessoesNoDia.length > 0,
         tempoSegundos: sessoesNoDia.reduce((acc, s) => acc + s.duracaoSegundos, 0),
-        futuro,
         isHoje: i === 0
       })
     }
     return dias
-  }, [dados.sessoes])
+  }, [dados.sessoes, getDataLocal])
 
-  // Dados do gráfico semanal
-  const dadosGrafico = [
-    { dia: 'Seg', minutos: 95 },
-    { dia: 'Ter', minutos: 72 },
-    { dia: 'Qua', minutos: 110 },
-    { dia: 'Qui', minutos: 85 },
-    { dia: 'Sex', minutos: 65 },
-    { dia: 'Sáb', minutos: 120 },
-    { dia: 'Dom', minutos: 45 },
-  ]
-
-  // Calcular estatísticas por disciplina
-  const estatisticasDisciplinas = dados.disciplinas.map(disc => {
-    const sessoesDisc = dados.sessoes.filter(s => s.disciplinaId === disc.id)
-    const tempo = sessoesDisc.reduce((acc, s) => acc + s.duracaoSegundos, 0)
-    const acertos = disc.topicos.reduce((acc, t) => acc + t.acertos, 0)
-    const erros = disc.topicos.reduce((acc, t) => acc + t.erros, 0)
-    const total = acertos + erros
-    const percentual = total > 0 ? ((acertos / total) * 100).toFixed(1) : '—'
-    const topicosConcluidos = disc.topicos.filter(t => t.concluido).length
-    const progresso = (topicosConcluidos / disc.topicos.length) * 100
-
-    return {
-      ...disc,
-      tempo: formatarTempoLegivel(tempo),
-      acertos,
-      erros,
-      percentual,
-      progresso
+  // Dados do grafico semanal baseados nas sessoes reais
+  const dadosGrafico = useMemo(() => {
+    const hojeStr = getDataLocal()
+    const hojeDate = new Date(hojeStr + 'T12:00:00')
+    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
+    const resultado = []
+    
+    for (let i = 6; i >= 0; i--) {
+      const data = new Date(hojeDate)
+      data.setDate(data.getDate() - i)
+      const dataISO = data.toISOString().split('T')[0]
+      const sessoesNoDia = dados.sessoes.filter(s => s.data === dataISO)
+      const minutos = Math.round(sessoesNoDia.reduce((acc, s) => acc + s.duracaoSegundos, 0) / 60)
+      
+      resultado.push({
+        dia: diasSemana[data.getDay()],
+        minutos
+      })
     }
-  })
+    
+    return resultado
+  }, [dados.sessoes, getDataLocal])
+
+  // Calcular estatisticas por disciplina
+  const estatisticasDisciplinas = useMemo(() => {
+    return dados.disciplinas.map(disc => {
+      const sessoesDisc = dados.sessoes.filter(s => s.disciplinaId === disc.id)
+      const tempo = sessoesDisc.reduce((acc, s) => acc + s.duracaoSegundos, 0)
+      const acertos = disc.topicos.reduce((acc, t) => acc + t.acertos, 0)
+      const erros = disc.topicos.reduce((acc, t) => acc + t.erros, 0)
+      const total = acertos + erros
+      const percentual = total > 0 ? ((acertos / total) * 100).toFixed(1) : '—'
+      const topicosConcluidos = disc.topicos.filter(t => t.concluido).length
+      const progresso = disc.topicos.length > 0 ? (topicosConcluidos / disc.topicos.length) * 100 : 0
+
+      return {
+        ...disc,
+        tempo: formatarTempoLegivel(tempo),
+        acertos,
+        erros,
+        percentual,
+        progresso
+      }
+    })
+  }, [dados])
 
   return (
     <div className="space-y-6">
-      {/* Banner de alerta */}
-      {bannerVisivel && dados.stats.streak > 0 && (
+      {/* Banner de alerta - so mostra se NAO estudou hoje */}
+      {bannerVisivel && !estudouHoje && dados.stats.streak > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">⚠️</span>
             <p className="text-amber-800 font-body">
-              Você ainda não estudou hoje! Não perca seu streak de <strong>{dados.stats.streak} dias</strong>
+              Voce ainda nao estudou hoje! Nao perca seu streak de <strong>{dados.stats.streak} dias</strong>
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={onOpenTimer}>
               Estudar agora <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
             <Button 
@@ -132,7 +148,7 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
         </div>
       )}
 
-      {/* Cards de métricas */}
+      {/* Cards de metricas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="shadow-sm">
           <CardContent className="pt-6">
@@ -142,7 +158,7 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
               </div>
               <div>
                 <p className="text-2xl font-heading font-bold text-foreground">{tempoTotal}</p>
-                <p className="text-sm text-muted-foreground">este mês</p>
+                <p className="text-sm text-muted-foreground">tempo total</p>
               </div>
             </div>
           </CardContent>
@@ -156,7 +172,7 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
               </div>
               <div>
                 <p className="text-2xl font-heading font-bold text-foreground">{desempenho}%</p>
-                <p className="text-sm text-muted-foreground">{dados.stats.totalQuestoes.toLocaleString()} questões</p>
+                <p className="text-sm text-muted-foreground">{dados.stats.totalQuestoes.toLocaleString()} questoes</p>
               </div>
             </div>
           </CardContent>
@@ -193,10 +209,10 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
         </Card>
       </div>
 
-      {/* Calendário de constância */}
+      {/* Calendario de constancia */}
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle className="font-heading text-lg">Calendário de Constância</CardTitle>
+          <CardTitle className="font-heading text-lg">Calendario de Constancia</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 flex-wrap">
@@ -207,11 +223,11 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
                   w-8 h-8 rounded-full flex items-center justify-center text-xs font-mono cursor-pointer
                   transition-all duration-200 hover:scale-110
                   ${dia.isHoje ? 'ring-2 ring-primary animate-pulse-border' : ''}
-                  ${dia.futuro ? 'bg-muted' : dia.estudou ? 'bg-success text-white' : 'bg-error-light text-error'}
+                  ${dia.estudou ? 'bg-success text-white' : 'bg-error-light text-error'}
                 `}
                 title={`${dia.data}${dia.estudou ? ` - ${formatarTempoLegivel(dia.tempoSegundos)}` : ''}`}
               >
-                {new Date(dia.data).getDate()}
+                {new Date(dia.data + 'T12:00:00').getDate()}
               </div>
             ))}
           </div>
@@ -222,11 +238,7 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-error-light border border-error" />
-              <span>Não estudou</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-muted" />
-              <span>Futuro</span>
+              <span>Nao estudou</span>
             </div>
           </div>
         </CardContent>
@@ -244,8 +256,8 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Disciplina</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Tempo</th>
-                  <th className="text-center py-3 px-4 font-medium text-muted-foreground">✅ Acertos</th>
-                  <th className="text-center py-3 px-4 font-medium text-muted-foreground">❌ Erros</th>
+                  <th className="text-center py-3 px-4 font-medium text-muted-foreground">Acertos</th>
+                  <th className="text-center py-3 px-4 font-medium text-muted-foreground">Erros</th>
                   <th className="text-center py-3 px-4 font-medium text-muted-foreground">%</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Progresso</th>
                 </tr>
@@ -271,7 +283,6 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
                         <Progress 
                           value={disc.progresso} 
                           className="h-2 w-24"
-                          style={{ '--progress-color': disc.cor } as React.CSSProperties}
                         />
                         <span className="text-sm text-muted-foreground">{Math.round(disc.progresso)}%</span>
                       </div>
@@ -284,7 +295,7 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
         </CardContent>
       </Card>
 
-      {/* Metas da semana e gráfico */}
+      {/* Metas da semana e grafico */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Metas */}
         <div className="space-y-4">
@@ -292,24 +303,24 @@ export function Dashboard({ planoAtivo = 'bb' }: DashboardProps) {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-muted-foreground">Meta de tempo</span>
-                <span className="text-sm font-medium">6,5h / 10h</span>
+                <span className="text-sm font-medium">{formatarTempoLegivel(dados.stats.tempoTotalSegundos)} / 10h</span>
               </div>
-              <Progress value={65} className="h-3" />
+              <Progress value={Math.min((dados.stats.tempoTotalSegundos / 36000) * 100, 100)} className="h-3" />
             </CardContent>
           </Card>
           
           <Card className="shadow-sm">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Meta de questões</span>
-                <span className="text-sm font-medium">34 / 50</span>
+                <span className="text-sm text-muted-foreground">Meta de questoes</span>
+                <span className="text-sm font-medium">{dados.stats.totalQuestoes} / 50</span>
               </div>
-              <Progress value={68} className="h-3 [&>div]:bg-secondary" />
+              <Progress value={Math.min((dados.stats.totalQuestoes / 50) * 100, 100)} className="h-3 [&>div]:bg-secondary" />
             </CardContent>
           </Card>
         </div>
 
-        {/* Gráfico semanal */}
+        {/* Grafico semanal */}
         <Card className="shadow-sm lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-heading text-lg">Estudo da Semana</CardTitle>
