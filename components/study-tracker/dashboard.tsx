@@ -172,7 +172,7 @@ export function Dashboard({ planoAtivo = 'bb', onOpenTimer }: DashboardProps) {
               </div>
               <div>
                 <p className="text-2xl font-heading font-bold text-foreground">{desempenho}%</p>
-                <p className="text-sm text-muted-foreground">{dados.stats.totalQuestoes.toLocaleString()} questoes</p>
+                <p className="text-sm text-muted-foreground">{dados.stats.totalQuestoes} questoes</p>
               </div>
             </div>
           </CardContent>
